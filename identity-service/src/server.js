@@ -158,7 +158,10 @@ async function startServer() {
 
     // API routes
     app.use("/api/auth/register", sensitiveEndpointsLimiter);
-    // app.use("/api/auth/login", sensitiveEndpointsLimiter);
+    app.use("/api/auth/login", sensitiveEndpointsLimiter);
+    app.use("/api/auth/refresh-token", sensitiveEndpointsLimiter);
+    app.use("/api/auth/profile", sensitiveEndpointsLimiter);
+    app.use("/api/auth/logout", sensitiveEndpointsLimiter);
 
     app.use("/api/auth", identityRoutes);
 
