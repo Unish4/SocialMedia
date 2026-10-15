@@ -11,7 +11,7 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "type": "commonjs",
+  "type": "module",
   "dependencies": {
     "argon2": "^0.45.1",
     "cors": "^2.8.6",
@@ -23,7 +23,8 @@
     "joi": "^18.2.9",
     "jsonwebtoken": "^9.0.3",
     "mongoose": "^9.11.2",
-    "rate-limit": "^0.1.1",
+    "rate-limit-redis": "^6.0.1",
+    "rate-limiter-flexible": "^11.2.2",
     "redis": "^6.3.0",
     "winston": "^3.19.0"
   }
