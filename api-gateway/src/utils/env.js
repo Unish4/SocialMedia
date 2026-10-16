@@ -8,4 +8,6 @@ export const ENV = {
   NODE_ENV: nodeEnv,
   REDIS_URL: process.env.REDIS_URL,
   IDENTITY_SERVICE_URL: process.env.IDENTITY_SERVICE_URL || "http://localhost:3001",
+  POST_SERVICE_URL: process.env.POST_SERVICE_URL || "http://localhost:3002",
+  JWT_SECRET: process.env.JWT_SECRET 
 };
