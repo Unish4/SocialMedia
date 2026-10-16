@@ -8,19 +8,13 @@ import { RedisStore } from "rate-limit-redis";
 import logger from "./utils/logger.js";
 import proxy from "express-http-proxy";
 import { errorHandler, notFoundHandler } from "./middleware/errorHandler.js";
+import validateToken from "./middleware/authMiddleware.js";
 
 const app = express();
 const PORT = ENV.PORT;
 
 app.use(helmet());
 app.use(cors());
-
-// NOTE: express.json() is intentionally NOT registered here.
-// express-http-proxy reads the raw request stream to forward the body. If
-// express.json() runs first it consumes that stream, so POST bodies never
-// reach the proxy. Instead we register express.json() AFTER the proxy below,
-// and we use proxyReqBodyDecorator to re-serialise req.body for proxied
-// auth routes (see the auth proxy configuration).
 
 app.use((req, res, next) => {
   logger.info("Received %s request to %s", req.method, req.path);
@@ -86,11 +80,6 @@ const proxyOptions = {
     return req.originalUrl.replace(/^\/v1/, "/api");
   },
   proxyErrorHandler: (err, res, next) => {
-    // The proxy's timeout option aborts the upstream socket, which surfaces as
-    // an ECONNRESET error. Return 504 (Gateway Timeout) in that case — the same
-    // status the proxy library's built-in handler would return — so clients
-    // receive a meaningful signal instead of a generic 500. All other proxy
-    // errors (connection refused, DNS failure, etc.) remain 500.
     if (err?.code === "ECONNRESET") {
       logger.warn(
         "Proxy request timed out (ECONNRESET): %s",
@@ -122,9 +111,6 @@ async function startServer() {
         return proxyReqOpts;
       },
       proxyReqBodyDecorator: (bodyContent, srcReq) => {
-        // If express.json() (or another body parser) has already consumed the
-        // stream, req.body is populated. Re-serialise it so the upstream
-        // service receives a valid JSON body.
         if (
           srcReq.body &&
           typeof srcReq.body === "object" &&
@@ -144,9 +130,40 @@ async function startServer() {
     }),
   );
 
-  // Register express.json() AFTER the proxy so it is available for any
-  // non-proxied routes added in the future, without interfering with proxy
-  // body forwarding.
+  app.use(
+    "/v1/posts",
+    validateToken,
+    proxy(ENV.POST_SERVICE_URL, {
+      ...proxyOptions,
+      timeout: 10000,
+      parseReqBody: false,
+      proxyReqOptDecorator: (proxyReqOpts, srcReq) => {
+        proxyReqOpts.headers["Content-Type"] = "application/json";
+        proxyReqOpts.headers["x-user-id"] = srcReq.user.userId;
+        return proxyReqOpts;
+      },
+      proxyReqBodyDecorator: (bodyContent, srcReq) => {
+        if (
+          srcReq.body &&
+          typeof srcReq.body === "object" &&
+          Object.keys(srcReq.body).length > 0
+        ) {
+          return JSON.stringify(srcReq.body);
+        }
+        return bodyContent;
+      },
+      userResDecorator: (proxyRes, proxyResData, userReq, userRes) => {
+        logger.info(
+          `Response received from Post service: ${proxyRes.statusCode}`,
+        );
+
+        return proxyResData;
+      },
+    }),
+  );
+
+  // Register express.json() AFTER the proxy routes so it is available for any
+  // non-proxied routes added in the future, without interfering with proxy stream forwarding.
   app.use(express.json());
 
   //  Handle unmatched routes
@@ -159,6 +176,9 @@ async function startServer() {
     logger.info(`API Gateway is running on port ${PORT}`);
     logger.info(
       `Identity service is running on port ${ENV.IDENTITY_SERVICE_URL}`,
+    );
+    logger.info(
+      `Post service is running on port ${ENV.POST_SERVICE_URL}`,
     );
     logger.info(
       redisClient
